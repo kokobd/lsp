@@ -81,7 +81,7 @@ library
                      , Diff
                      , directory
                      , dlist
-                     , filepath
+                     , filepath-compat
                      , hashable
                      , hslogger
                      , lens >= 4.15.2
