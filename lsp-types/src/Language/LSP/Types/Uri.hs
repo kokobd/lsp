@@ -1,7 +1,6 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE InstanceSigs               #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
 
@@ -25,14 +24,24 @@ module Language.LSP.Types.Uri
   )
   where
 
+#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
+import           System.OsString.Internal.Types (OsString (..),
+                                                 WindowsString (..))
+#else
+import           System.OsString.Internal.Types (OsString (..),
+                                                 PosixString (..))
+#endif
+
 import           Control.DeepSeq
 import           Control.Monad.Catch            (MonadThrow)
 import qualified Data.Aeson                     as A
 import           Data.Binary                    (Binary, Get, get, put)
 import           Data.ByteString.Short          (ShortByteString)
+import           Data.Either                    (fromRight)
 import           Data.Hashable
 import           Data.List                      (stripPrefix)
 import           Data.Maybe                     (fromJust)
+import           Data.String                    (IsString (fromString))
 import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 import           GHC.Generics
@@ -44,13 +53,6 @@ import qualified System.FilePath.Windows        as FPW
 import qualified System.Info
 import qualified System.OsPath                  as OsPath
 import           System.OsPath                  (OsPath)
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-import           System.OsString.Internal.Types (OsString (..),
-                                                 WindowsString (..))
-#else
-import           System.OsString.Internal.Types (OsString (..),
-                                                 PosixString (..))
-#endif
 
 newtype Uri = Uri { getUri :: Text }
   deriving (Eq,Ord,Read,Show,Generic,A.FromJSON,A.ToJSON,Hashable,A.ToJSONKey,A.FromJSONKey)
@@ -175,7 +177,7 @@ platformAdjustToUriPath systemOS srcPath
 --
 -- This is one of the most performance critical parts of ghcide, do not
 -- modify it without profiling.
-data NormalizedFilePath = NormalizedFilePath NormalizedUri !OsPath
+data NormalizedFilePath = NormalizedFilePath !NormalizedUri !OsPath
     deriving (Generic, Eq, Ord)
 
 instance NFData NormalizedFilePath
@@ -222,11 +224,14 @@ instance Hashable NormalizedFilePath where
   hash (NormalizedFilePath uri _) = hash uri
   hashWithSalt salt (NormalizedFilePath uri _) = hashWithSalt salt uri
 
-toNormalizedFilePath :: MonadThrow m => FilePath -> m NormalizedFilePath
-toNormalizedFilePath fp = OsPath.encodeUtf fp >>= osPathToNormalizedFilePath
+instance IsString NormalizedFilePath where
+  fromString = toNormalizedFilePath
 
-fromNormalizedFilePath :: MonadThrow m => NormalizedFilePath -> m FilePath
-fromNormalizedFilePath = OsPath.decodeUtf . osPathFromNormalizedFilePath
+toNormalizedFilePath :: FilePath -> NormalizedFilePath
+toNormalizedFilePath fp = fromJust $ OsPath.encodeUtf fp >>= osPathToNormalizedFilePath
+
+fromNormalizedFilePath :: NormalizedFilePath -> FilePath
+fromNormalizedFilePath = fromRight "" . OsPath.decodeUtf . osPathFromNormalizedFilePath
 
 osPathToNormalizedFilePath :: MonadThrow m => OsPath -> m NormalizedFilePath
 osPathToNormalizedFilePath fp = flip NormalizedFilePath nfp <$> nuri
